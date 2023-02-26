@@ -1,0 +1,23 @@
+{
+    "/Users/samuliak/Desktop/lava_engine/assets/shaders/vulkan/source/compute/assemble_ssao.comp": 1677223651,
+    "/Users/samuliak/Desktop/lava_engine/assets/shaders/vulkan/source/compute/disassemble_depth.comp": 1677223651,
+    "/Users/samuliak/Desktop/lava_engine/assets/shaders/vulkan/source/fragment/blur.frag": 1677315190,
+    "/Users/samuliak/Desktop/lava_engine/assets/shaders/vulkan/source/fragment/deferred.frag": 1677315190,
+    "/Users/samuliak/Desktop/lava_engine/assets/shaders/vulkan/source/fragment/downsample.frag": 1677315191,
+    "/Users/samuliak/Desktop/lava_engine/assets/shaders/vulkan/source/fragment/equi_to_cube.frag": 1677315190,
+    "/Users/samuliak/Desktop/lava_engine/assets/shaders/vulkan/source/fragment/hdr.frag": 1677329592,
+    "/Users/samuliak/Desktop/lava_engine/assets/shaders/vulkan/source/fragment/irradiance.frag": 1677315190,
+    "/Users/samuliak/Desktop/lava_engine/assets/shaders/vulkan/source/fragment/main.frag": 1677333884,
+    "/Users/samuliak/Desktop/lava_engine/assets/shaders/vulkan/source/fragment/point_light.frag": 1677223651,
+    "/Users/samuliak/Desktop/lava_engine/assets/shaders/vulkan/source/fragment/prefiltered.frag": 1677315190,
+    "/Users/samuliak/Desktop/lava_engine/assets/shaders/vulkan/source/fragment/shadow.frag": 1677223651,
+    "/Users/samuliak/Desktop/lava_engine/assets/shaders/vulkan/source/fragment/skylight.frag": 1677315190,
+    "/Users/samuliak/Desktop/lava_engine/assets/shaders/vulkan/source/fragment/ssao.frag": 1677315190,
+    "/Users/samuliak/Desktop/lava_engine/assets/shaders/vulkan/source/fragment/upsample.frag": 1677315190,
+    "/Users/samuliak/Desktop/lava_engine/assets/shaders/vulkan/source/vertex/cubemap.vert": 1677315568,
+    "/Users/samuliak/Desktop/lava_engine/assets/shaders/vulkan/source/vertex/deferred.vert": 1677333935,
+    "/Users/samuliak/Desktop/lava_engine/assets/shaders/vulkan/source/vertex/point_light.vert": 1677223651,
+    "/Users/samuliak/Desktop/lava_engine/assets/shaders/vulkan/source/vertex/shadow.vert": 1677223651,
+    "/Users/samuliak/Desktop/lava_engine/assets/shaders/vulkan/source/vertex/skylight.vert": 1677315105,
+    "/Users/samuliak/Desktop/lava_engine/assets/shaders/vulkan/source/vertex/triangle.vert": 1677315116
+}
