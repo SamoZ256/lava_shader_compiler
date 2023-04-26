@@ -21,8 +21,8 @@ add_executable(${PROJECT_NAME}
 )
 
 include_directories(
-    "/Users/samuliak/Documents/json/include"
-    "/usr/local/include"
+    "external/json/include"
+    "/Users/samuliak/Documents/spirv-cross"
 )
 
 #find_package(spirv_cross_shared)

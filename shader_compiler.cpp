@@ -16,10 +16,13 @@
 
 namespace nh = nlohmann;
 
-#include "spirv_cross/spirv_msl.hpp"
+#include "spirv_msl.hpp"
+
+bool isNumber(const std::string & s) {
+    return !s.empty() && std::all_of(s.begin(), s.end(), ::isdigit);
+}
 
 std::vector<uint32_t> readFile(const char* path) {
-
 	FILE *file = fopen(path, "rb");
 	if (!file) {
 		std::cerr << "Failed to open file: " << path << std::endl;
@@ -31,22 +34,13 @@ std::vector<uint32_t> readFile(const char* path) {
 	long len = ftell(file) / sizeof(uint32_t);
 	rewind(file);
 
-	std::vector<uint32_t> spirv(len);
-	if (fread(spirv.data(), sizeof(uint32_t), len, file) != size_t(len))
-		spirv.clear();
+	std::vector<uint32_t> fileData(len);
+	if (fread(fileData.data(), sizeof(uint32_t), len, file) != size_t(len))
+		fileData.clear();
 
 	fclose(file);
-	return spirv;
-}
 
-void writeFile(const char* path, const char* string) {
-	FILE *file = fopen(path, "w");
-	if (!file) {
-		std::cerr << "Failed to write file: " << path << std::endl;
-	}
-
-	fprintf(file, "%s", string);
-	fclose(file);
+	return fileData;
 }
 
 std::string readFileStr(const char* filename) {
@@ -72,27 +66,44 @@ std::string readFileStr(const char* filename) {
     return content;
 }
 
+void writeFile(const char* path, const char* string) {
+	FILE *file = fopen(path, "w");
+	if (!file) {
+		std::cerr << "Failed to write file: " << path << std::endl;
+	}
+
+	fprintf(file, "%s", string);
+	fclose(file);
+}
+
 struct PushConstant {
-    std::string name;
+    //std::string name;
     uint32_t outBufferBinding;
 };
 
-struct UniformBufferBinding {
-    std::string name;
+struct BufferBinding {
+    //std::string name;
     uint32_t inSet;
     uint32_t inBinding;
     uint32_t outBufferBinding;
 };
 
 struct SampledImageBinding {
-    std::string name;
+    //std::string name;
     uint32_t inSet;
     uint32_t inBinding;
     uint32_t outTextureBinding;
     uint32_t outSamplerBinding;
 };
 
-void compileSpirvToMSL(std::string spirvSrcFile, std::string mslDstFile, std::string glslDstFile, std::string shaderBundleFile) {
+struct ImageBinding {
+    //std::string name;
+    uint32_t inSet;
+    uint32_t inBinding;
+    uint32_t outTextureBinding;
+};
+
+nh::json compileSpirvToMSL(std::string tempDir, std::string spirvSrcFile) {
     std::vector<uint32_t> spirvBinary = readFile(spirvSrcFile.c_str());
     auto movedSpirvBinary = std::move(spirvBinary);
 
@@ -100,15 +111,19 @@ void compileSpirvToMSL(std::string spirvSrcFile, std::string mslDstFile, std::st
 	spirv_cross::CompilerMSL msl(movedSpirvBinary);
 
 	// Set some options.
-	//spirv_cross::CompilerMSL::Options options;
-    //options.msl_version = spirv_cross::CompilerMSL::Options::make_msl_version(2, 0);
-	//msl.set_msl_options(options);
+	spirv_cross::CompilerMSL::Options options = msl.get_msl_options();
+    //options.platform = spirv_cross::CompilerMSL::Options::Platform::macOS;
+    options.msl_version = spirv_cross::CompilerMSL::Options::make_msl_version(3, 0);
+    options.use_framebuffer_fetch_subpasses = true;
+	msl.set_msl_options(options);
 
 	std::string mslSource = msl.compile();
 
-    writeFile(mslDstFile.c_str(), mslSource.c_str());
+    writeFile((tempDir + "/temp.metal").c_str(), mslSource.c_str());
+    //std::cout << "METAL SOURCE:\n\n" << mslSource << "\n\n\n\n" << std::endl;
 
     //GLSL
+    /*
 	spirv_cross::CompilerGLSL glsl(movedSpirvBinary);
     
     spirv_cross::CompilerGLSL::Options options;
@@ -121,27 +136,29 @@ void compileSpirvToMSL(std::string spirvSrcFile, std::string mslDstFile, std::st
 
 	std::string glslSource = glsl.compile();
 
-    writeFile(glslDstFile.c_str(), glslSource.c_str());
+    writeFile((tempDir + "/temp.glsl").c_str(), glslSource.c_str());
+    */
 
     //Bindings
     PushConstant* pushConstant = nullptr;
-    std::vector<UniformBufferBinding> uniformBufferBindings;
+    std::vector<BufferBinding> bufferBindings;
     std::vector<SampledImageBinding> sampledImageBindings;
+    std::vector<ImageBinding> imageBindings;
 
 	spirv_cross::ShaderResources resources = msl.get_shader_resources();
 
 	for (auto& resource : resources.push_constant_buffers) {
-        auto& glslResource = glsl.get_shader_resources().push_constant_buffers[0];
-        std::cout << glsl.get_name(glslResource.id) << std::endl;
+        //auto& glslResource = glsl.get_shader_resources().push_constant_buffers[0];
+        //std::cout << glsl.get_name(glslResource.id) << std::endl;
         pushConstant = new PushConstant{
-            glslResource.name,
+            //glslResource.name,
             msl.get_automatic_msl_resource_binding(resource.id)
         };
     }
 
     for (auto& resource : resources.uniform_buffers) {
-        UniformBufferBinding uniformBufferBinding{
-            resource.name,
+        BufferBinding uniformBufferBinding{
+            //resource.name,
             msl.get_decoration(resource.id, spv::DecorationDescriptorSet),
             msl.get_decoration(resource.id, spv::DecorationBinding),
             msl.get_automatic_msl_resource_binding(resource.id)
@@ -157,12 +174,22 @@ void compileSpirvToMSL(std::string spirvSrcFile, std::string mslDstFile, std::st
         msl.add_msl_resource_binding(resBinding);
         */
 
-        uniformBufferBindings.push_back(uniformBufferBinding);
+        bufferBindings.push_back(uniformBufferBinding);
+    }
+
+    for (auto& resource : resources.storage_buffers) {
+        BufferBinding storageSpaceBufferBinding{
+            msl.get_decoration(resource.id, spv::DecorationDescriptorSet),
+            msl.get_decoration(resource.id, spv::DecorationBinding),
+            msl.get_automatic_msl_resource_binding(resource.id)
+        };
+
+        bufferBindings.push_back(storageSpaceBufferBinding);
     }
 
 	for (auto& resource : resources.sampled_images) {
         SampledImageBinding sampledImageBinding{
-            resource.name,
+            //resource.name,
             msl.get_decoration(resource.id, spv::DecorationDescriptorSet),
             msl.get_decoration(resource.id, spv::DecorationBinding),
             msl.get_automatic_msl_resource_binding(resource.id),
@@ -183,24 +210,45 @@ void compileSpirvToMSL(std::string spirvSrcFile, std::string mslDstFile, std::st
         sampledImageBindings.push_back(sampledImageBinding);
 	}
 
-    //Write the shader resource file
-    nh::json JSON;
+	for (auto& resource : resources.storage_images) {
+        ImageBinding imageBinding{
+            msl.get_decoration(resource.id, spv::DecorationDescriptorSet),
+            msl.get_decoration(resource.id, spv::DecorationBinding),
+            msl.get_automatic_msl_resource_binding(resource.id)
+        };
 
-    JSON["stage"] = "unknown";
+        imageBindings.push_back(imageBinding);
+	}
+
+    for (auto& resource : resources.subpass_inputs) {
+        ImageBinding imageBinding{
+            //resource.name,
+            msl.get_decoration(resource.id, spv::DecorationDescriptorSet),
+            msl.get_decoration(resource.id, spv::DecorationBinding),
+            msl.get_automatic_msl_resource_binding(resource.id)
+        };
+
+        imageBindings.push_back(imageBinding);
+    }
+
+    //Write the shader resource file
+    nh::json shaderJSON;
+
+    shaderJSON["stage"] = "unknown";
 
     if (pushConstant != nullptr) {
-        JSON["pushConstant"]["name"] = pushConstant->name;
-        JSON["pushConstant"]["bufferBinding"] = pushConstant->outBufferBinding;
+        //JSON["pushConstant"]["name"] = pushConstant->name;
+        shaderJSON["pushConstant"]["bufferBinding"] = pushConstant->outBufferBinding;
     }
     
-    JSON["maxSet"] = "-1";
+    shaderJSON["maxSet"] = "-1";
 
 #define UPDATE_DESCRIPTOR_SET_MAX_BINDING(inSet, inBinding) \
-auto& descriptorSets = JSON["descriptorSets"]; \
+auto& descriptorSets = shaderJSON["descriptorSets"]; \
 std::string maxSet = "0"; \
 if (descriptorSets.contains("maxSet")) \
     maxSet = descriptorSets["maxSet"]; \
-JSON["maxSet"] = std::to_string(std::max((uint32_t)stoi(maxSet), inSet)); \
+shaderJSON["maxSet"] = std::to_string(std::max((uint32_t)stoi(maxSet), inSet)); \
 auto& descriptorSet = descriptorSets[std::to_string(inSet)]; \
 std::string maxBinding = "0"; \
 if (descriptorSet.contains("maxBinding")) \
@@ -208,59 +256,211 @@ if (descriptorSet.contains("maxBinding")) \
 descriptorSet["maxBinding"] = std::to_string(std::max((uint32_t)stoi(maxBinding), inBinding)); \
 auto& binding = descriptorSet["bindings"][std::to_string(inBinding)];
 
-    for (auto& uniformBufferBinding : uniformBufferBindings) {
-        UPDATE_DESCRIPTOR_SET_MAX_BINDING(uniformBufferBinding.inSet, uniformBufferBinding.inBinding);
-        binding["name"] = uniformBufferBinding.name;
-        binding["descriptorType"] = "uniformBuffer";
-        binding["bufferBinding"] = uniformBufferBinding.outBufferBinding;
+    for (auto& bufferBinding : bufferBindings) {
+        UPDATE_DESCRIPTOR_SET_MAX_BINDING(bufferBinding.inSet, bufferBinding.inBinding);
+        //binding["name"] = bufferBinding.name;
+        binding["descriptorType"] = "buffer";
+        binding["bufferBinding"] = bufferBinding.outBufferBinding;
     }
 
     for (auto& sampledImageBinding : sampledImageBindings) {
         UPDATE_DESCRIPTOR_SET_MAX_BINDING(sampledImageBinding.inSet, sampledImageBinding.inBinding);
-        binding["name"] = sampledImageBinding.name;
+        //binding["name"] = sampledImageBinding.name;
         binding["descriptorType"] = "combinedImageSampler";
         binding["textureBinding"] = sampledImageBinding.outTextureBinding;
         binding["samplerBinding"] = sampledImageBinding.outSamplerBinding;
     }
 
-    std::ofstream out(shaderBundleFile);
-    out << std::setw(4) << JSON << std::endl;
+    for (auto& imageBinding : imageBindings) {
+        UPDATE_DESCRIPTOR_SET_MAX_BINDING(imageBinding.inSet, imageBinding.inBinding);
+        //binding["name"] = imageBinding.name;
+        binding["descriptorType"] = "image";
+        binding["textureBinding"] = imageBinding.outTextureBinding;
+    }
+
+    return shaderJSON;
 }
 
-nh::json JSON;
+const std::string INPUT_ATTACHMENT_INDEX_NAME = "input_attachment_index";
+const std::string COLOR_ATTACHMENT_INDEX_NAME = "color_attachment_index";
+const std::string DEPTH_ATTACHMENT_NAME = "depth_attachment";
+const std::string LOCATION_NAME = "location";
+
+struct MappedAttachment {
+    uint32_t index;
+    size_t pos;
+};
+
+struct PreprocessedSource {
+    std::string source;
+    std::vector<MappedAttachment> mappedAttachments;
+};
+
+PreprocessedSource preprocessGlslShader(std::string filename) {
+    PreprocessedSource source;
+    source.source = readFileStr(filename.c_str());
+
+    //Gather and remove all the aditional information from the shader
+    size_t pos = 0;
+    while (true) {
+        pos = source.source.find(LOCATION_NAME, pos);
+
+        if (pos == std::string::npos)
+            break;
+
+        pos = source.source.find_first_not_of(" =", pos + LOCATION_NAME.size());
+        std::string locationIndexStr = source.source.substr(pos, 1);
+        if (!isNumber(locationIndexStr))
+            continue;
+        uint32_t locationIndex = std::stoi(locationIndexStr);
+
+        //std::cout << "Color attachment: " << locationIndex << std::endl;
+
+        pos++;
+        size_t removePos = pos, removeSize = 0;
+        pos = source.source.find_first_not_of(", ", pos);
+        if (source.source.substr(pos, COLOR_ATTACHMENT_INDEX_NAME.size()) == COLOR_ATTACHMENT_INDEX_NAME) {
+            pos = source.source.find_first_not_of(" =", pos + COLOR_ATTACHMENT_INDEX_NAME.size());
+            removeSize = pos - removePos + 1;
+            uint32_t colorAttachmentIndex = std::stoi(source.source.substr(pos, 1));
+
+            //std::cout << "Color attachment index: " << colorAttachmentIndex << std::endl;
+
+            source.source.replace(removePos, removeSize, "");
+            source.mappedAttachments.push_back({colorAttachmentIndex, removePos - 1});
+        }
+    }
+
+    pos = 0;
+    while (true) {
+        pos = source.source.find(INPUT_ATTACHMENT_INDEX_NAME, pos);
+
+        if (pos == std::string::npos)
+            break;
+        
+        pos = source.source.find_first_not_of(" =", pos + INPUT_ATTACHMENT_INDEX_NAME.size());
+        std::string inputAttachmentIndexStr = source.source.substr(pos, 1);
+        if (!isNumber(inputAttachmentIndexStr))
+            continue;
+        uint32_t inputAttachmentIndex = std::stoi(inputAttachmentIndexStr);
+
+        //std::cout << "Input attachment: " << inputAttachmentIndex << std::endl;
+
+        pos++;
+        size_t removePos = pos, removeSize = 0;
+        pos = source.source.find_first_not_of(", ", pos);
+        if (source.source.substr(pos, COLOR_ATTACHMENT_INDEX_NAME.size()) == COLOR_ATTACHMENT_INDEX_NAME) {
+            pos = source.source.find_first_not_of(" =", pos + COLOR_ATTACHMENT_INDEX_NAME.size());
+            removeSize = pos - removePos + 1;
+            uint32_t colorAttachmentIndex = std::stoi(source.source.substr(pos, 1));
+
+            //std::cout << "Color attachment index: " << colorAttachmentIndex << std::endl;
+
+            source.mappedAttachments.push_back({colorAttachmentIndex, removePos - 1});
+        } else if (source.source.substr(pos, DEPTH_ATTACHMENT_NAME.size()) == DEPTH_ATTACHMENT_NAME) {
+            //removeSize = pos - removePos + DEPTH_ATTACHMENT_NAME.size();
+            throw std::runtime_error("Depth attachment is not currently supported as an input attachment. To use it with the Vulkan backend, just make it a color attachment with random index");
+        } else {
+            throw std::runtime_error("Input attachment must have a color or depth attachment associated with it");
+        }
+        source.source.replace(removePos, removeSize, "");
+    }
+
+    return source;
+}
+
+void defineGlslMacro(std::string& source, std::string macroName) {
+    size_t pos = source.find("#version");
+    pos = source.find("\n", pos);
+    source.insert(pos + 1, "#define " + macroName + "\n");
+}
+
+void mapGlslAttachmentForMsl(PreprocessedSource& source) {
+    for (auto& mappedAttachment : source.mappedAttachments) {
+        source.source.replace(mappedAttachment.pos, 1, std::to_string(mappedAttachment.index));
+        //std::cout << "INDEX: " << mappedAttachment.index << " : " << mappedAttachment.pos << std::endl;
+    }
+    //std::cout << "SOURCE:\n" << source.source << std::endl;
+}
+
+nh::json filesJSON;
 
 std::string compilerPath = "/Users/samuliak/VulkanSDK/1.3.236.0/macOS/bin/glslc";
 
-void compileShaders(std::string vulkanSourceDir, std::string vulkanCompDir, std::string metalSourceDir, std::string metalCompDir, std::string openglSourceDir, std::string shaderBundlesDir) {
-    bool compiled = false;
-    auto dirIterator = std::filesystem::directory_iterator(vulkanSourceDir);
-    for (auto& dirEntry : dirIterator) {
-        std::string path = std::filesystem::current_path().string() + "/" + dirEntry.path().string();
+std::string includeSource =
+"#extension GL_AMD_gpu_shader_half_float: enable\n"
+"#define float2 vec2\n"
+"#define float3 vec3\n"
+"#define float4 vec4\n"
+"#define float3x3 mat3\n"
+"#define float4x4 mat4\n"
+"#define half float16_t\n"
+"#define half2 f16vec2\n"
+"#define half3 f16vec3\n"
+"#define half4 f16vec4\n"
+"#define half3x3 f16mat3\n"
+"#define half4x4 f16mat4";
 
-        struct stat result;
-        if (stat(path.c_str(), &result) == 0) {
-            auto modTime = result.st_mtime;
-            //std::cout << modTime << std::endl;
-            if (JSON[path] != modTime) {
-                JSON[path] = modTime;
-                std::string filename = dirEntry.path().filename().string();
-                std::string filenameStem = dirEntry.path().stem().string();
-                std::cout << "Compiling '" << filename << "'" << std::endl;
-                std::string vulkanCompPath = vulkanCompDir + "/" + filenameStem + ".spv";
-                system((compilerPath + " " + vulkanSourceDir + "/" + filename + " -o " + vulkanCompPath).c_str());
-                std::string metalSourcePath = metalSourceDir + "/" + filenameStem + ".metal";
-                std::string openglSourcePath = openglSourceDir + "/" + filenameStem + ".glsl";
-                //system((spirvCrossPath + " " + vulkanCompPath + " --output " + metalSourcePath + " --msl").c_str()); // --msl-force-native-arrays
-                compileSpirvToMSL(vulkanCompPath, metalSourcePath, openglSourcePath, shaderBundlesDir + "/" + filenameStem + ".json");
-                std::string metalCompPath = metalCompDir + "/" + filenameStem + ".air";
-                system(("xcrun -sdk macosx metal -gline-tables-only -frecord-sources -c " + metalSourcePath + " -o " + metalCompPath).c_str());
-                system(("xcrun -sdk macosx metallib " + metalCompPath + " -o " + metalCompDir + "/" + filenameStem + ".metallib").c_str());
-                compiled = true;
+void compileShaders(std::string tempDir, std::string sourceDir, std::string compiledDir) {
+    struct stat result;
+    if (stat(sourceDir.c_str(), &result) == 0) {
+        bool compiled = false;
+        auto dirIterator = std::filesystem::directory_iterator(sourceDir);
+        for (auto& dirEntry : dirIterator) {
+            std::string path = std::filesystem::current_path().string() + "/" + dirEntry.path().string();
+
+            if (stat(path.c_str(), &result) == 0) {
+                auto modTime = result.st_mtime;
+                //std::cout << modTime << std::endl;
+                if (filesJSON[path] != modTime) {
+                    filesJSON[path] = modTime;
+                    std::string filename = dirEntry.path().filename().string();
+                    std::string filenameStem = dirEntry.path().stem().string();
+                    std::string filenameExt = dirEntry.path().extension();
+                    std::cout << "Compiling '" << filename << "'" << std::endl;
+                    std::string spirvCompiledFile1 = tempDir + "/temp1.spv";
+                    std::string spirvCompiledFile2 = tempDir + "/temp2.spv";
+                    std::string glslSourceFile1 = tempDir + "/temp1." + filenameExt;
+                    std::string glslSourceFile2 = tempDir + "/temp2." + filenameExt;
+
+                    PreprocessedSource glslSource1 = preprocessGlslShader(sourceDir + "/" + filename);
+                    PreprocessedSource glslSource2 = glslSource1;
+                    mapGlslAttachmentForMsl(glslSource2);
+                    defineGlslMacro(glslSource1.source, "LV_BACKEND_VULKAN");
+                    defineGlslMacro(glslSource2.source, "LV_BACKEND_METAL");
+                    writeFile(glslSourceFile1.c_str(), glslSource1.source.c_str());
+                    writeFile(glslSourceFile2.c_str(), glslSource2.source.c_str());
+
+                    system((compilerPath + " " + glslSourceFile1 + " -o " + spirvCompiledFile1).c_str());
+                    system((compilerPath + " " + glslSourceFile2 + " -o " + spirvCompiledFile2).c_str());
+
+                    //std::string metalSourcePath = metalSourceDir + "/" + filenameStem + ".metal";
+                    //std::string openglSourcePath = openglSourceDir + "/" + filenameStem + ".glsl";
+                    nh::json shaderJSON = compileSpirvToMSL(tempDir, spirvCompiledFile2);
+                    std::string airPath = tempDir + "/temp.air";
+                    std::string metallibPath = tempDir + "/temp.metallib";
+
+                    system(("xcrun -sdk macosx metal -gline-tables-only -frecord-sources -c " + tempDir + "/temp.metal -o " + airPath).c_str());
+                    system(("xcrun -sdk macosx metallib " + airPath + " -o " + metallibPath).c_str());
+
+                    std::string spirvFile = readFileStr(spirvCompiledFile1.c_str());
+                    std::string metallibFile = readFileStr(metallibPath.c_str());
+                    //shaderJSON[".spirv"] = spirvFile;
+                    //shaderJSON[".metallib"] = metallibFile;
+
+                    std::ofstream out(compiledDir + "/" + filenameStem + ".json");
+                    out << std::setw(4) << shaderJSON << "\nsection.spv" << spirvFile << "section.metallib" << metallibFile;
+                    out.close();
+
+                    compiled = true;
+                }
             }
         }
-    }
-    if (!compiled) {
-        std::cout << "Nothing to do for '" << vulkanSourceDir << "'" << std::endl;
+        if (!compiled) {
+            std::cout << "Nothing to do for '" << sourceDir << "'" << std::endl;
+        }
+    } else {
+        std::cout << "No such file or directory '" << sourceDir << "'" << std::endl;
     }
 }
 
@@ -279,14 +479,22 @@ int main(int argc, char* argv[]) {
     filesPath = filesPath.substr(0, filesPath.find_last_of("/")) + "/files.json";
 
     std::string text = readFileStr(filesPath.c_str());
-    JSON = nh::json::parse(text);
+    filesJSON = nh::json::parse(text);
 
-    compileShaders(directory + "/vulkan/source/vertex", directory + "/vulkan/compiled/vertex", directory + "/metal/source/vertex", directory + "/metal/compiled/vertex", directory + "/opengl/source/vertex", directory + "/shader_bundles/vertex");
-    compileShaders(directory + "/vulkan/source/fragment", directory + "/vulkan/compiled/fragment", directory + "/metal/source/fragment", directory + "/metal/compiled/fragment", directory + "/opengl/source/fragment", directory + "/shader_bundles/fragment");
-    compileShaders(directory + "/vulkan/source/compute", directory + "/vulkan/compiled/compute", directory + "/metal/source/compute", directory + "/metal/compiled/compute", directory + "/opengl/source/compute", directory + "/shader_bundles/compute");
+    std::string tempDir = directory + "/.temp";
+    mkdir(tempDir.c_str(), 0700);
+
+    std::ofstream includeSourceOut(tempDir + "/lava_common.glsl");
+    includeSourceOut << includeSource;
+    includeSourceOut.close();
+
+    compileShaders(tempDir, directory + "/source/vertex", directory + "/compiled/vertex");
+    compileShaders(tempDir, directory + "/source/fragment", directory + "/compiled/fragment");
+    compileShaders(tempDir, directory + "/source/compute", directory + "/compiled/compute");
 
     std::ofstream out(filesPath);
-    out << std::setw(4) << JSON << std::endl;
+    out << std::setw(4) << filesJSON << std::endl;
+    out.close();
 
     return 0;
 }
